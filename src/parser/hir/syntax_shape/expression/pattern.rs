@@ -1,7 +1,7 @@
 use crate::parser::hir::syntax_shape::{
     expand_atom, expand_bare, expand_syntax, expression::expand_file_path, parse_single_node,
     AtomicToken, ExpandContext, ExpandExpression, ExpandSyntax, ExpansionRule, FallibleColorSyntax,
-    FlatShape,
+    FlatShape, ParseError,
 };
 use crate::parser::{hir, hir::TokensIterator, Operator, RawToken, TokenNode};
 use crate::prelude::*;
@@ -71,7 +71,7 @@ impl ExpandExpression for PatternShape {
         &self,
         token_nodes: &mut TokensIterator<'_>,
         context: &ExpandContext,
-    ) -> Result<hir::Expression, ShellError> {
+    ) -> Result<hir::Expression, ParseError> {
         let pattern = expand_syntax(&BarePatternShape, token_nodes, context);
 
         match pattern {
@@ -81,26 +81,17 @@ impl ExpandExpression for PatternShape {
             Err(_) => {}
         }
 
-        parse_single_node(token_nodes, "Pattern", |token, token_tag, _| {
+        parse_single_node(token_nodes, "Pattern", |token, token_tag, err| {
             Ok(match token {
-                RawToken::GlobPattern => {
-                    return Err(ShellError::unreachable(
-                        "glob pattern after glob already returned",
-                    ))
-                }
-                RawToken::Operator(..) => {
-                    return Err(ShellError::unreachable("dot after glob already returned"))
-                }
-                RawToken::Bare => {
-                    return Err(ShellError::unreachable("bare after glob already returned"))
-                }
-
+                RawToken::GlobPattern
+                | RawToken::Operator(..)
+                | RawToken::Bare
+                | RawToken::ExternalWord => return Err(err.error()),
                 RawToken::Variable(tag) if tag.slice(context.source) == "it" => {
                     hir::Expression::it_variable(tag, token_tag)
                 }
                 RawToken::Variable(tag) => hir::Expression::variable(tag, token_tag),
                 RawToken::ExternalCommand(tag) => hir::Expression::external_command(tag, token_tag),
-                RawToken::ExternalWord => return Err(ShellError::invalid_external_word(token_tag)),
                 RawToken::Number(_) => hir::Expression::bare(token_tag),
 
                 RawToken::String(tag) => hir::Expression::file_path(
@@ -122,7 +113,7 @@ impl ExpandSyntax for BarePatternShape {
         &self,
         token_nodes: &'b mut TokensIterator<'a>,
         context: &ExpandContext,
-    ) -> Result<Span, ShellError> {
+    ) -> Result<Span, ParseError> {
         expand_bare(token_nodes, context, |token| match token {
             TokenNode::Token(Spanned {
                 item: RawToken::Bare,

@@ -1,8 +1,8 @@
 use crate::parser::hir::syntax_shape::{
     color_fallible_syntax, color_fallible_syntax_with, expand_atom, expand_expr, expand_syntax,
     parse_single_node, AnyExpressionShape, AtomicToken, BareShape, ExpandContext, ExpandExpression,
-    ExpandSyntax, ExpansionRule, FallibleColorSyntax, FlatShape, Peeked, SkipSyntax, StringShape,
-    TestSyntax, WhitespaceShape,
+    ExpandSyntax, ExpansionRule, FallibleColorSyntax, FlatShape, ParseError, Peeked, SkipSyntax,
+    StringShape, TestSyntax, WhitespaceShape,
 };
 use crate::parser::{hir, hir::Expression, hir::TokensIterator, Operator, RawToken};
 use crate::prelude::*;
@@ -15,7 +15,7 @@ impl ExpandExpression for VariablePathShape {
         &self,
         token_nodes: &mut TokensIterator<'_>,
         context: &ExpandContext,
-    ) -> Result<hir::Expression, ShellError> {
+    ) -> Result<hir::Expression, ParseError> {
         // 1. let the head be the first token, expecting a variable
         // 2. let the tail be an empty list of members
         // 2. while the next token (excluding ws) is a dot:
@@ -205,7 +205,7 @@ impl ExpandSyntax for PathTailShape {
         &self,
         token_nodes: &'b mut TokensIterator<'a>,
         context: &ExpandContext,
-    ) -> Result<Self::Output, ShellError> {
+    ) -> Result<Self::Output, ParseError> {
         let mut end: Option<Span> = None;
         let mut tail = vec![];
 
@@ -223,7 +223,7 @@ impl ExpandSyntax for PathTailShape {
 
         match end {
             None => {
-                return Err(ShellError::type_error("path tail", {
+                return Err(ParseError::mismatch("path tail", {
                     let typed_span = token_nodes.typed_span_at_cursor();
 
                     Tagged {
@@ -255,7 +255,7 @@ impl ExpandSyntax for ExpressionContinuationShape {
         &self,
         token_nodes: &mut TokensIterator<'_>,
         context: &ExpandContext,
-    ) -> Result<ExpressionContinuation, ShellError> {
+    ) -> Result<ExpressionContinuation, ParseError> {
         // Try to expand a `.`
         let dot = expand_syntax(&DotShape, token_nodes, context);
 
@@ -394,8 +394,8 @@ impl ExpandExpression for VariableShape {
         &self,
         token_nodes: &mut TokensIterator<'_>,
         context: &ExpandContext,
-    ) -> Result<hir::Expression, ShellError> {
-        parse_single_node(token_nodes, "variable", |token, token_tag, _| {
+    ) -> Result<hir::Expression, ParseError> {
+        parse_single_node(token_nodes, "variable", |token, token_tag, err| {
             Ok(match token {
                 RawToken::Variable(tag) => {
                     if tag.slice(context.source) == "it" {
@@ -404,12 +404,7 @@ impl ExpandExpression for VariableShape {
                         hir::Expression::variable(tag, token_tag)
                     }
                 }
-                _ => {
-                    return Err(ShellError::type_error(
-                        "variable",
-                        token.type_name().tagged(token_tag),
-                    ))
-                }
+                _ => return Err(err.error()),
             })
         })
     }
@@ -435,7 +430,7 @@ impl FallibleColorSyntax for VariableShape {
         );
 
         let atom = match atom {
-            Err(err) => return Err(err),
+            Err(err) => return Err(err.into()),
             Ok(atom) => atom,
         };
 
@@ -476,7 +471,7 @@ impl FallibleColorSyntax for VariableShape {
         );
 
         let atom = match atom {
-            Err(err) => return Err(err),
+            Err(err) => return Err(err.into()),
             Ok(atom) => atom,
         };
 
@@ -489,7 +484,7 @@ impl FallibleColorSyntax for VariableShape {
                 token_nodes.color_shape(FlatShape::ItVariable.spanned(atom.span));
                 Ok(())
             }
-            _ => Err(ShellError::type_error("variable", atom.tagged_type_name())),
+            _ => Err(ParseError::mismatch("variable", atom.tagged_type_name()).into()),
         }
     }
 }
@@ -538,7 +533,7 @@ enum ColumnPathState {
     LeadingDot(Span),
     Dot(Span, Vec<Member>, Span),
     Member(Span, Vec<Member>),
-    Error(ShellError),
+    Error(ParseError),
 }
 
 impl ColumnPathState {
@@ -546,10 +541,10 @@ impl ColumnPathState {
         match self {
             ColumnPathState::Initial => ColumnPathState::LeadingDot(dot),
             ColumnPathState::LeadingDot(_) => {
-                ColumnPathState::Error(ShellError::type_error("column", "dot".tagged(dot)))
+                ColumnPathState::Error(ParseError::mismatch("column", "dot".tagged(dot)))
             }
             ColumnPathState::Dot(..) => {
-                ColumnPathState::Error(ShellError::type_error("column", "dot".tagged(dot)))
+                ColumnPathState::Error(ParseError::mismatch("column", "dot".tagged(dot)))
             }
             ColumnPathState::Member(tag, members) => ColumnPathState::Dot(tag, members, dot),
             ColumnPathState::Error(err) => ColumnPathState::Error(err),
@@ -570,20 +565,20 @@ impl ColumnPathState {
                 })
             }
             ColumnPathState::Member(..) => {
-                ColumnPathState::Error(ShellError::type_error("column", member.tagged_type_name()))
+                ColumnPathState::Error(ParseError::mismatch("column", member.tagged_type_name()))
             }
             ColumnPathState::Error(err) => ColumnPathState::Error(err),
         }
     }
 
-    pub fn into_path(self, next: Peeked) -> Result<Tagged<Vec<Member>>, ShellError> {
+    pub fn into_path(self, next: Peeked) -> Result<Tagged<Vec<Member>>, ParseError> {
         match self {
             ColumnPathState::Initial => Err(next.type_error("column path")),
             ColumnPathState::LeadingDot(dot) => {
-                Err(ShellError::type_error("column", "dot".tagged(dot)))
+                Err(ParseError::mismatch("column", "dot".tagged(dot)))
             }
             ColumnPathState::Dot(_tag, _members, dot) => {
-                Err(ShellError::type_error("column", "dot".tagged(dot)))
+                Err(ParseError::mismatch("column", "dot".tagged(dot)))
             }
             ColumnPathState::Member(tag, tags) => Ok(tags.tagged(tag)),
             ColumnPathState::Error(err) => Err(err),
@@ -594,7 +589,7 @@ impl ColumnPathState {
 pub fn expand_column_path<'a, 'b>(
     token_nodes: &'b mut TokensIterator<'a>,
     context: &ExpandContext,
-) -> Result<Tagged<Vec<Member>>, ShellError> {
+) -> Result<Tagged<Vec<Member>>, ParseError> {
     let mut state = ColumnPathState::Initial;
 
     loop {
@@ -727,7 +722,7 @@ impl ExpandSyntax for ColumnPathShape {
         &self,
         token_nodes: &'b mut TokensIterator<'a>,
         context: &ExpandContext,
-    ) -> Result<Self::Output, ShellError> {
+    ) -> Result<Self::Output, ParseError> {
         expand_column_path(token_nodes, context)
     }
 }
@@ -810,7 +805,7 @@ impl ExpandSyntax for MemberShape {
         &self,
         token_nodes: &mut TokensIterator<'_>,
         context: &ExpandContext,
-    ) -> Result<Member, ShellError> {
+    ) -> Result<Member, ParseError> {
         let bare = BareShape.test(token_nodes, context);
         if let Some(peeked) = bare {
             let node = peeked.not_eof("column")?.commit();
@@ -910,12 +905,12 @@ impl ExpandSyntax for DotShape {
         &self,
         token_nodes: &'b mut TokensIterator<'a>,
         _context: &ExpandContext,
-    ) -> Result<Self::Output, ShellError> {
+    ) -> Result<Self::Output, ParseError> {
         parse_single_node(token_nodes, "dot", |token, token_span, _| {
             Ok(match token {
                 RawToken::Operator(Operator::Dot) => token_span,
                 _ => {
-                    return Err(ShellError::type_error(
+                    return Err(ParseError::mismatch(
                         "dot",
                         token.type_name().tagged(token_span),
                     ))
@@ -950,7 +945,7 @@ impl FallibleColorSyntax for InfixShape {
         parse_single_node(
             checkpoint.iterator,
             "infix operator",
-            |token, token_span, _| {
+            |token, token_span, err| {
                 match token {
                     // If it's an operator (and not `.`), it's a match
                     RawToken::Operator(operator) if operator != Operator::Dot => {
@@ -959,10 +954,7 @@ impl FallibleColorSyntax for InfixShape {
                     }
 
                     // Otherwise, it's not a match
-                    _ => Err(ShellError::type_error(
-                        "infix operator",
-                        token.type_name().tagged(token_span),
-                    )),
+                    _ => Err(err.error()),
                 }
             },
         )?;
@@ -1006,7 +998,7 @@ impl FallibleColorSyntax for InfixShape {
                     RawToken::Operator(operator) if operator != Operator::Dot => Ok(token_span),
 
                     // Otherwise, it's not a match
-                    _ => Err(ShellError::type_error(
+                    _ => Err(ParseError::mismatch(
                         "infix operator",
                         token.type_name().tagged(token_span),
                     )),
@@ -1033,7 +1025,7 @@ impl ExpandSyntax for InfixShape {
         &self,
         token_nodes: &'b mut TokensIterator<'a>,
         context: &ExpandContext,
-    ) -> Result<Self::Output, ShellError> {
+    ) -> Result<Self::Output, ParseError> {
         let checkpoint = token_nodes.checkpoint();
 
         // An infix operator must be prefixed by whitespace
@@ -1043,7 +1035,7 @@ impl ExpandSyntax for InfixShape {
         let operator = parse_single_node(
             checkpoint.iterator,
             "infix operator",
-            |token, token_span, _| {
+            |token, token_span, err| {
                 Ok(match token {
                     // If it's an operator (and not `.`), it's a match
                     RawToken::Operator(operator) if operator != Operator::Dot => {
@@ -1051,12 +1043,7 @@ impl ExpandSyntax for InfixShape {
                     }
 
                     // Otherwise, it's not a match
-                    _ => {
-                        return Err(ShellError::type_error(
-                            "infix operator",
-                            token.type_name().tagged(token_span),
-                        ))
-                    }
+                    _ => return Err(err.error()),
                 })
             },
         )?;

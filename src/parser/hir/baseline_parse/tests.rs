@@ -125,7 +125,7 @@ fn parse_tokens<T: Eq + Debug>(
         let expr = match expr {
             Ok(expr) => expr,
             Err(err) => {
-                crate::cli::print_err(err, &BasicHost, context.source().clone());
+                crate::cli::print_err(err.into(), &BasicHost, context.source().clone());
                 panic!("Parse failed");
             }
         };

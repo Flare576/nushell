@@ -8,7 +8,7 @@ pub fn expand_delimited_square(
     children: &Vec<TokenNode>,
     span: Span,
     context: &ExpandContext,
-) -> Result<hir::Expression, ShellError> {
+) -> Result<hir::Expression, ParseError> {
     let mut tokens = TokensIterator::new(&children, span, false);
 
     let list = expand_syntax(&ExpressionListShape, &mut tokens, context);

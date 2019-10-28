@@ -1,4 +1,4 @@
-use crate::errors::ShellError;
+use crate::errors::ParseError;
 #[cfg(not(coloring_in_tokens))]
 use crate::parser::hir::syntax_shape::FlatShape;
 use crate::parser::{
@@ -23,7 +23,7 @@ impl ExpandSyntax for ExpressionListShape {
         &self,
         token_nodes: &mut TokensIterator<'_>,
         context: &ExpandContext,
-    ) -> Result<Vec<hir::Expression>, ShellError> {
+    ) -> Result<Vec<hir::Expression>, ParseError> {
         let mut exprs = vec![];
 
         if token_nodes.at_end_possible_ws() {

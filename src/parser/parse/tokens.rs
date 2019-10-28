@@ -23,8 +23,8 @@ impl RawToken {
             RawToken::Operator(..) => "operator",
             RawToken::String(_) => "String",
             RawToken::Variable(_) => "variable",
-            RawToken::ExternalCommand(_) => "external command",
-            RawToken::ExternalWord => "external word",
+            RawToken::ExternalCommand(_) => "syntax error",
+            RawToken::ExternalWord => "syntax error",
             RawToken::GlobPattern => "glob pattern",
             RawToken::Bare => "String",
         }

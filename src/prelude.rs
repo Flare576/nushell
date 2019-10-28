@@ -71,7 +71,7 @@ pub(crate) use crate::data::types::ExtractType;
 pub(crate) use crate::data::{Primitive, Value};
 pub(crate) use crate::env::host::handle_unexpected;
 pub(crate) use crate::env::Host;
-pub(crate) use crate::errors::{CoerceInto, ShellError};
+pub(crate) use crate::errors::{CoerceInto, ParseError, ShellError};
 pub(crate) use crate::parser::hir::SyntaxShape;
 pub(crate) use crate::parser::parse::parser::Number;
 pub(crate) use crate::parser::registry::Signature;

@@ -642,6 +642,7 @@ fn classify_pipeline(
         &mut iterator,
         &context.expand_context(source, pipeline.span()),
     )
+    .map_err(|err| err.into())
 }
 
 // Classify this command as an external command, which doesn't give special meaning
@@ -651,7 +652,7 @@ pub(crate) fn external_command(
     tokens: &mut TokensIterator,
     context: &ExpandContext,
     name: Tagged<&str>,
-) -> Result<ClassifiedCommand, ShellError> {
+) -> Result<ClassifiedCommand, ParseError> {
     let arg_list_strings = expand_syntax(&ExternalTokensShape, tokens, context)?;
 
     Ok(ClassifiedCommand::External(ExternalCommand {

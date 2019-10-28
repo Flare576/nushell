@@ -95,12 +95,9 @@ impl<'content, 'me> Peeked<'content, 'me> {
         Some(node)
     }
 
-    pub fn not_eof(
-        self,
-        expected: impl Into<String>,
-    ) -> Result<PeekedNode<'content, 'me>, ShellError> {
+    pub fn not_eof(self, expected: &'static str) -> Result<PeekedNode<'content, 'me>, ParseError> {
         match self.node {
-            None => Err(ShellError::unexpected_eof(
+            None => Err(ParseError::unexpected_eof(
                 expected,
                 self.iterator.eof_span(),
             )),
@@ -113,7 +110,7 @@ impl<'content, 'me> Peeked<'content, 'me> {
         }
     }
 
-    pub fn type_error(&self, expected: impl Into<String>) -> ShellError {
+    pub fn type_error(&self, expected: &'static str) -> ParseError {
         peek_error(&self.node, self.iterator.eof_span(), expected)
     }
 }
@@ -141,19 +138,15 @@ impl<'content, 'me> PeekedNode<'content, 'me> {
 
     pub fn rollback(self) {}
 
-    pub fn type_error(&self, expected: impl Into<String>) -> ShellError {
+    pub fn type_error(&self, expected: &'static str) -> ParseError {
         peek_error(&Some(self.node), self.iterator.eof_span(), expected)
     }
 }
 
-pub fn peek_error(
-    node: &Option<&TokenNode>,
-    eof_span: Span,
-    expected: impl Into<String>,
-) -> ShellError {
+pub fn peek_error(node: &Option<&TokenNode>, eof_span: Span, expected: &'static str) -> ParseError {
     match node {
-        None => ShellError::unexpected_eof(expected, eof_span),
-        Some(node) => ShellError::type_error(expected, node.tagged_type_name()),
+        None => ParseError::unexpected_eof(expected, eof_span),
+        Some(node) => ParseError::mismatch(expected, node.tagged_type_name()),
     }
 }
 
@@ -533,8 +526,8 @@ impl<'content> TokensIterator<'content> {
     pub fn peek_any_token<'me, T>(
         &'me mut self,
         expected: &'static str,
-        block: impl FnOnce(&'content TokenNode) -> Result<T, ShellError>,
-    ) -> Result<T, ShellError> {
+        block: impl FnOnce(&'content TokenNode) -> Result<T, ParseError>,
+    ) -> Result<T, ParseError> {
         let peeked = start_next(self, false);
         let peeked = peeked.not_eof(expected);
 

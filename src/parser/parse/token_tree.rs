@@ -1,4 +1,4 @@
-use crate::errors::ShellError;
+use crate::errors::{ParseError, ShellError};
 use crate::parser::parse::{call_node::*, flag::*, operator::*, pipeline::*, tokens::*};
 use crate::prelude::*;
 use crate::traits::ToDebug;
@@ -221,10 +221,10 @@ impl TokenNode {
         }
     }
 
-    pub fn as_pipeline(&self) -> Result<Pipeline, ShellError> {
+    pub fn as_pipeline(&self) -> Result<Pipeline, ParseError> {
         match self {
             TokenNode::Pipeline(Spanned { item, .. }) => Ok(item.clone()),
-            _ => Err(ShellError::unimplemented("unimplemented")),
+            other => Err(ParseError::mismatch("pipeline", other.tagged_type_name())),
         }
     }
 

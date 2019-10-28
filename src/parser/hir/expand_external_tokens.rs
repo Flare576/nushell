@@ -1,4 +1,4 @@
-use crate::errors::ShellError;
+use crate::errors::ParseError;
 #[cfg(not(coloring_in_tokens))]
 use crate::parser::hir::syntax_shape::FlatShape;
 use crate::parser::{
@@ -21,7 +21,7 @@ impl ExpandSyntax for ExternalTokensShape {
         &self,
         token_nodes: &'b mut TokensIterator<'a>,
         context: &ExpandContext,
-    ) -> Result<Self::Output, ShellError> {
+    ) -> Result<Self::Output, ParseError> {
         let mut out: Vec<Spanned<String>> = vec![];
 
         loop {
@@ -100,7 +100,7 @@ impl ExpandSyntax for ExternalExpressionShape {
         &self,
         token_nodes: &'b mut TokensIterator<'a>,
         context: &ExpandContext,
-    ) -> Result<Self::Output, ShellError> {
+    ) -> Result<Self::Output, ParseError> {
         expand_syntax(&MaybeSpaceShape, token_nodes, context)?;
 
         let first = expand_atom(
@@ -137,7 +137,7 @@ impl ExpandSyntax for ExternalExpression {
         &self,
         token_nodes: &'b mut TokensIterator<'a>,
         context: &ExpandContext,
-    ) -> Result<Self::Output, ShellError> {
+    ) -> Result<Self::Output, ParseError> {
         expand_syntax(&MaybeSpaceShape, token_nodes, context)?;
 
         let first = expand_syntax(&ExternalHeadShape, token_nodes, context)?.span;
@@ -165,15 +165,14 @@ impl ExpandExpression for ExternalHeadShape {
         &self,
         token_nodes: &'b mut TokensIterator<'a>,
         context: &ExpandContext,
-    ) -> Result<Expression, ShellError> {
+    ) -> Result<Expression, ParseError> {
         match expand_atom(
             token_nodes,
             "external argument",
             context,
             ExpansionRule::new()
                 .allow_external_word()
-                .treat_size_as_word()
-                .reject_whitespace(),
+                .treat_size_as_word(),
         )? {
             atom => match &atom {
                 Spanned { item, span } => Ok(match item {
@@ -183,22 +182,22 @@ impl ExpandExpression for ExternalHeadShape {
                     AtomicToken::Whitespace { .. } => {
                         unreachable!("ExpansionRule doesn't allow Whitespace")
                     }
-                    AtomicToken::ExternalCommand { command } => {
-                        Expression::external_command(*command, *span)
-                    }
-                    AtomicToken::Number { number } => {
-                        Expression::number(number.to_number(context.source()), *span)
-                    }
                     AtomicToken::ShorthandFlag { .. }
                     | AtomicToken::LonghandFlag { .. }
                     | AtomicToken::SquareDelimited { .. }
                     | AtomicToken::ParenDelimited { .. }
                     | AtomicToken::BraceDelimited { .. }
                     | AtomicToken::Pipeline { .. } => {
-                        return Err(ShellError::type_error(
+                        return Err(ParseError::mismatch(
                             "external command name",
                             atom.tagged_type_name(),
                         ))
+                    }
+                    AtomicToken::ExternalCommand { command } => {
+                        Expression::external_command(*command, *span)
+                    }
+                    AtomicToken::Number { number } => {
+                        Expression::number(number.to_number(context.source()), *span)
                     }
                     AtomicToken::String { body } => Expression::string(*body, *span),
                     AtomicToken::ItVariable { name } => Expression::it_variable(*name, *span),
@@ -223,15 +222,14 @@ impl ExpandExpression for ExternalContinuationShape {
         &self,
         token_nodes: &'b mut TokensIterator<'a>,
         context: &ExpandContext,
-    ) -> Result<Expression, ShellError> {
+    ) -> Result<Expression, ParseError> {
         match expand_atom(
             token_nodes,
             "external argument",
             context,
             ExpansionRule::new()
                 .allow_external_word()
-                .treat_size_as_word()
-                .reject_whitespace(),
+                .treat_size_as_word(),
         )? {
             atom => match &atom {
                 Spanned { item, span } => Ok(match item {
@@ -250,19 +248,19 @@ impl ExpandExpression for ExternalContinuationShape {
                     AtomicToken::String { body } => Expression::string(*body, *span),
                     AtomicToken::ItVariable { name } => Expression::it_variable(*name, *span),
                     AtomicToken::Variable { name } => Expression::variable(*name, *span),
-                    AtomicToken::ExternalWord { .. } => Expression::bare(*span),
-                    AtomicToken::GlobPattern { .. } => Expression::bare(*span),
-                    AtomicToken::FilePath { .. } => Expression::bare(*span),
-                    AtomicToken::Word { .. } => Expression::bare(*span),
-                    AtomicToken::ShorthandFlag { .. } => Expression::bare(*span),
-                    AtomicToken::LonghandFlag { .. } => Expression::bare(*span),
-                    AtomicToken::Dot { .. } => Expression::bare(*span),
-                    AtomicToken::Operator { .. } => Expression::bare(*span),
+                    AtomicToken::ExternalWord { .. }
+                    | AtomicToken::GlobPattern { .. }
+                    | AtomicToken::FilePath { .. }
+                    | AtomicToken::Word { .. }
+                    | AtomicToken::ShorthandFlag { .. }
+                    | AtomicToken::LonghandFlag { .. }
+                    | AtomicToken::Dot { .. }
+                    | AtomicToken::Operator { .. } => Expression::bare(*span),
                     AtomicToken::SquareDelimited { .. }
                     | AtomicToken::ParenDelimited { .. }
                     | AtomicToken::BraceDelimited { .. }
                     | AtomicToken::Pipeline { .. } => {
-                        return Err(ShellError::type_error(
+                        return Err(ParseError::mismatch(
                             "external argument",
                             atom.tagged_type_name(),
                         ))
@@ -270,6 +268,40 @@ impl ExpandExpression for ExternalContinuationShape {
                 }),
             },
         }
+    }
+}
+
+#[cfg(coloring_in_tokens)]
+impl ColorSyntax for ExternalExpression {
+    type Info = ExternalExpressionResult;
+    type Input = ();
+
+    fn name(&self) -> &'static str {
+        "ExternalExpression"
+    }
+
+    fn color_syntax<'a, 'b>(
+        &self,
+        _input: &(),
+        token_nodes: &'b mut TokensIterator<'a>,
+        context: &ExpandContext,
+    ) -> ExternalExpressionResult {
+        let atom = match expand_atom(
+            token_nodes,
+            "external word",
+            context,
+            ExpansionRule::permissive(),
+        ) {
+            Err(_) => unreachable!("TODO: separate infallible expand_atom"),
+            Ok(Spanned {
+                item: AtomicToken::Eof { .. },
+                ..
+            }) => return ExternalExpressionResult::Eof,
+            Ok(atom) => atom,
+        };
+
+        token_nodes.mutate_shapes(|shapes| atom.color_tokens(shapes));
+        return ExternalExpressionResult::Processed;
     }
 }
 
@@ -306,40 +338,6 @@ impl ColorSyntax for ExternalExpression {
         };
 
         atom.color_tokens(shapes);
-        return ExternalExpressionResult::Processed;
-    }
-}
-
-#[cfg(coloring_in_tokens)]
-impl ColorSyntax for ExternalExpression {
-    type Info = ExternalExpressionResult;
-    type Input = ();
-
-    fn name(&self) -> &'static str {
-        "ExternalExpression"
-    }
-
-    fn color_syntax<'a, 'b>(
-        &self,
-        _input: &(),
-        token_nodes: &'b mut TokensIterator<'a>,
-        context: &ExpandContext,
-    ) -> ExternalExpressionResult {
-        let atom = match expand_atom(
-            token_nodes,
-            "external word",
-            context,
-            ExpansionRule::permissive(),
-        ) {
-            Err(_) => unreachable!("TODO: separate infallible expand_atom"),
-            Ok(Spanned {
-                item: AtomicToken::Eof { .. },
-                ..
-            }) => return ExternalExpressionResult::Eof,
-            Ok(atom) => atom,
-        };
-
-        token_nodes.mutate_shapes(|shapes| atom.color_tokens(shapes));
         return ExternalExpressionResult::Processed;
     }
 }

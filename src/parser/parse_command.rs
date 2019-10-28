@@ -1,4 +1,4 @@
-use crate::errors::{ArgumentError, ShellError};
+use crate::errors::{ArgumentError, ParseError};
 use crate::parser::hir::syntax_shape::{
     color_fallible_syntax, color_syntax, expand_expr, flat_shape::FlatShape, spaced,
     BackoffColoringMode, ColorSyntax, MaybeSpaceShape,
@@ -18,7 +18,7 @@ pub fn parse_command_tail(
     context: &ExpandContext,
     tail: &mut TokensIterator,
     command_span: Span,
-) -> Result<Option<(Option<Vec<hir::Expression>>, Option<NamedArguments>)>, ShellError> {
+) -> Result<Option<(Option<Vec<hir::Expression>>, Option<NamedArguments>)>, ParseError> {
     let mut named = NamedArguments::new();
     trace_remaining("nodes", tail.clone(), context.source());
 
@@ -38,7 +38,7 @@ pub fn parse_command_tail(
                         tail.move_to(pos);
 
                         if tail.at_end() {
-                            return Err(ShellError::argument_error(
+                            return Err(ParseError::argument_error(
                                 config.name.clone(),
                                 ArgumentError::MissingValueForName(name.to_string()),
                                 flag.span,
@@ -59,7 +59,7 @@ pub fn parse_command_tail(
                         tail.move_to(pos);
 
                         if tail.at_end() {
-                            return Err(ShellError::argument_error(
+                            return Err(ParseError::argument_error(
                                 config.name.clone(),
                                 ArgumentError::MissingValueForName(name.to_string()),
                                 flag.span,
@@ -95,7 +95,7 @@ pub fn parse_command_tail(
         match arg {
             PositionalType::Mandatory(..) => {
                 if tail.at_end_possible_ws() {
-                    return Err(ShellError::argument_error(
+                    return Err(ParseError::argument_error(
                         config.name.clone(),
                         ArgumentError::MissingMandatoryPositional(arg.name().to_string()),
                         Tag {
@@ -594,11 +594,11 @@ fn extract_mandatory(
     tokens: &mut hir::TokensIterator<'_>,
     source: &Text,
     span: Span,
-) -> Result<(usize, Spanned<Flag>), ShellError> {
+) -> Result<(usize, Spanned<Flag>), ParseError> {
     let flag = tokens.extract(|t| t.as_flag(name, source));
 
     match flag {
-        None => Err(ShellError::argument_error(
+        None => Err(ParseError::argument_error(
             config.name.clone(),
             ArgumentError::MissingMandatoryFlag(name.to_string()),
             span,
@@ -615,7 +615,7 @@ fn extract_optional(
     name: &str,
     tokens: &mut hir::TokensIterator<'_>,
     source: &Text,
-) -> Result<(Option<(usize, Spanned<Flag>)>), ShellError> {
+) -> Result<(Option<(usize, Spanned<Flag>)>), ParseError> {
     let flag = tokens.extract(|t| t.as_flag(name, source));
 
     match flag {

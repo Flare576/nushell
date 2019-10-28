@@ -242,6 +242,10 @@ impl Expression {
     pub(crate) fn it_variable(inner: impl Into<Span>, outer: impl Into<Span>) -> Expression {
         RawExpression::Variable(Variable::It(inner.into())).spanned(outer)
     }
+
+    pub(crate) fn tagged_type_name(&self) -> Tagged<&'static str> {
+        self.item.type_name().tagged(self.span)
+    }
 }
 
 impl ToDebug for Expression {

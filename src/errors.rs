@@ -30,6 +30,82 @@ impl Description {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum ParseErrorReason {
+    Eof {
+        expected: &'static str,
+    },
+    Mismatch {
+        expected: &'static str,
+        actual: Tagged<String>,
+    },
+    ArgumentError {
+        command: String,
+        error: ArgumentError,
+        tag: Tag,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    reason: ParseErrorReason,
+    tag: Tag,
+}
+
+impl ParseError {
+    pub fn unexpected_eof(expected: &'static str, span: Span) -> ParseError {
+        ParseError {
+            reason: ParseErrorReason::Eof { expected },
+            tag: span.into(),
+        }
+    }
+
+    pub fn mismatch(expected: &'static str, actual: Tagged<impl Into<String>>) -> ParseError {
+        let Tagged { tag, item } = actual;
+
+        ParseError {
+            reason: ParseErrorReason::Mismatch {
+                expected,
+                actual: item.into().tagged(tag.clone()),
+            },
+            tag,
+        }
+    }
+
+    pub fn argument_error(
+        command: impl Into<String>,
+        kind: ArgumentError,
+        tag: impl Into<Tag>,
+    ) -> ParseError {
+        let tag = tag.into();
+
+        ParseError {
+            reason: ParseErrorReason::ArgumentError {
+                command: command.into(),
+                error: kind,
+                tag: tag.clone(),
+            },
+            tag: tag.clone(),
+        }
+    }
+}
+
+impl From<ParseError> for ShellError {
+    fn from(error: ParseError) -> ShellError {
+        match error.reason {
+            ParseErrorReason::Eof { expected } => ShellError::unexpected_eof(expected, error.tag),
+            ParseErrorReason::Mismatch { actual, expected } => {
+                ShellError::type_error(expected, actual.clone())
+            }
+            ParseErrorReason::ArgumentError {
+                command,
+                error,
+                tag,
+            } => ShellError::argument_error(command, error, tag),
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Clone, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum ArgumentError {
     MissingMandatoryFlag(String),
@@ -148,16 +224,6 @@ impl ShellError {
         ProximateShellError::ArgumentError {
             command: command.into(),
             error: kind,
-            tag: tag.into(),
-        }
-        .start()
-    }
-
-    pub(crate) fn invalid_external_word(tag: impl Into<Tag>) -> ShellError {
-        ProximateShellError::ArgumentError {
-            command: "Invalid argument to Nu command (did you mean to call an external command?)"
-                .into(),
-            error: ArgumentError::InvalidExternalWord,
             tag: tag.into(),
         }
         .start()
@@ -374,10 +440,6 @@ impl ShellError {
 
     pub(crate) fn unexpected(title: impl Into<String>) -> ShellError {
         ShellError::untagged_runtime_error(&format!("Unexpected: {}", title.into()))
-    }
-
-    pub(crate) fn unreachable(title: impl Into<String>) -> ShellError {
-        ShellError::untagged_runtime_error(&format!("BUG: Unreachable: {}", title.into()))
     }
 }
 

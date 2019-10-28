@@ -1,6 +1,6 @@
 use crate::parser::hir::syntax_shape::{
     expand_atom, parse_single_node, ExpandContext, ExpandExpression, ExpansionRule,
-    FallibleColorSyntax, FlatShape,
+    FallibleColorSyntax, FlatShape, ParseError,
 };
 use crate::parser::{
     hir,
@@ -17,7 +17,7 @@ impl ExpandExpression for NumberShape {
         &self,
         token_nodes: &mut TokensIterator<'_>,
         context: &ExpandContext,
-    ) -> Result<hir::Expression, ShellError> {
+    ) -> Result<hir::Expression, ParseError> {
         parse_single_node(token_nodes, "Number", |token, token_span, err| {
             Ok(match token {
                 RawToken::GlobPattern | RawToken::Operator(..) => return Err(err.error()),
@@ -28,10 +28,13 @@ impl ExpandExpression for NumberShape {
                     hir::Expression::external_command(tag, token_span)
                 }
                 RawToken::ExternalWord => {
-                    return Err(ShellError::invalid_external_word(Tag {
-                        span: token_span,
-                        anchor: None,
-                    }))
+                    return Err(ParseError::mismatch(
+                        "number",
+                        "syntax error".tagged(Tag {
+                            span: token_span,
+                            anchor: None,
+                        }),
+                    ))
                 }
                 RawToken::Variable(tag) => hir::Expression::variable(tag, token_span),
                 RawToken::Number(number) => {
@@ -115,12 +118,11 @@ impl ExpandExpression for IntShape {
         &self,
         token_nodes: &mut TokensIterator<'_>,
         context: &ExpandContext,
-    ) -> Result<hir::Expression, ShellError> {
+    ) -> Result<hir::Expression, ParseError> {
         parse_single_node(token_nodes, "Integer", |token, token_span, err| {
             Ok(match token {
-                RawToken::GlobPattern | RawToken::Operator(..) => return Err(err.error()),
-                RawToken::ExternalWord => {
-                    return Err(ShellError::invalid_external_word(token_span))
+                RawToken::GlobPattern | RawToken::Operator(..) | RawToken::ExternalWord => {
+                    return Err(err.error())
                 }
                 RawToken::Variable(span) if span.slice(context.source) == "it" => {
                     hir::Expression::it_variable(span, token_span)
