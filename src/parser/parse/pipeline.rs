@@ -9,7 +9,6 @@ use std::fmt;
 pub struct Pipeline {
     #[get = "pub"]
     pub(crate) parts: Vec<Spanned<PipelineElement>>,
-    // pub(crate) post_ws: Option<Tag>,
 }
 
 impl ToDebug for Pipeline {

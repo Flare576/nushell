@@ -1080,13 +1080,13 @@ impl ExpandSyntax for ClassifiedCommandShape {
             CommandSignature::External(name) => {
                 let name_str = name.slice(&context.source);
 
-                external_command(iterator, &context.source, name_str.tagged(name))
+                external_command(iterator, context, name_str.tagged(name))
             }
 
             CommandSignature::LiteralExternal { outer, inner } => {
                 let name_str = inner.slice(&context.source);
 
-                external_command(iterator, &context.source, name_str.tagged(outer))
+                external_command(iterator, context, name_str.tagged(outer))
             }
 
             CommandSignature::Internal(command) => {
@@ -1428,6 +1428,28 @@ pub struct MaybeSpacedExpression<T: ExpandExpression> {
 #[derive(Debug, Copy, Clone)]
 pub struct MaybeSpaceShape;
 
+impl ExpandSyntax for MaybeSpaceShape {
+    type Output = ();
+    fn expand_syntax<'a, 'b>(
+        &self,
+        token_nodes: &'b mut TokensIterator<'a>,
+        _context: &ExpandContext,
+    ) -> Result<Self::Output, ShellError> {
+        let peeked = token_nodes.peek_any().not_eof("whitespace");
+
+        match peeked {
+            Err(_) => {}
+            Ok(peeked) => {
+                if let TokenNode::Whitespace(..) = peeked.node {
+                    peeked.commit();
+                }
+            }
+        };
+
+        Ok(())
+    }
+}
+
 #[cfg(not(coloring_in_tokens))]
 impl ColorSyntax for MaybeSpaceShape {
     type Info = ();
@@ -1598,13 +1620,13 @@ fn classify_command(
         CommandSignature::External(name) => {
             let name_str = name.slice(source);
 
-            external_command(&mut iterator, source, name_str.tagged(name))
+            external_command(&mut iterator, context, name_str.tagged(name))
         }
 
         CommandSignature::LiteralExternal { outer, inner } => {
             let name_str = inner.slice(source);
 
-            external_command(&mut iterator, source, name_str.tagged(outer))
+            external_command(&mut iterator, context, name_str.tagged(outer))
         }
 
         CommandSignature::Internal(command) => {

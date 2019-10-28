@@ -10,16 +10,28 @@ use crate::{Span, Spanned, SpannedItem};
 #[allow(unused)]
 use getset::{Getters, MutGetters};
 
-#[derive(Getters, Debug)]
-pub struct TokensIteratorState<'content> {
-    tokens: &'content [TokenNode],
-    span: Span,
-    skip_ws: bool,
-    index: usize,
-    seen: indexmap::IndexSet<usize>,
-    #[cfg(coloring_in_tokens)]
-    #[cfg_attr(coloring_in_tokens, get = "pub")]
-    shapes: Vec<Spanned<FlatShape>>,
+cfg_if::cfg_if! {
+    if #[cfg(coloring_in_tokens)] {
+        #[derive(Getters, Debug)]
+        pub struct TokensIteratorState<'content> {
+            tokens: &'content [TokenNode],
+            span: Span,
+            skip_ws: bool,
+            index: usize,
+            seen: indexmap::IndexSet<usize>,
+            #[get = "pub"]
+            shapes: Vec<Spanned<FlatShape>>,
+        }
+    } else {
+        #[derive(Getters, Debug)]
+        pub struct TokensIteratorState<'content> {
+            tokens: &'content [TokenNode],
+            span: Span,
+            skip_ws: bool,
+            index: usize,
+            seen: indexmap::IndexSet<usize>,
+        }
+    }
 }
 
 #[derive(Getters, MutGetters, Debug)]
@@ -505,12 +517,6 @@ impl<'content> TokensIterator<'content> {
             },
             tracer: self.tracer.clone(),
         }
-    }
-
-    // Get the next token, not including whitespace
-    pub fn next_non_ws(&mut self) -> Option<&TokenNode> {
-        let mut peeked = start_next(self, true);
-        peeked.commit()
     }
 
     // Peek the next token, not including whitespace

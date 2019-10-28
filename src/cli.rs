@@ -14,8 +14,8 @@ use crate::git::current_branch;
 use crate::parser::registry::Signature;
 use crate::parser::{
     hir,
-    hir::syntax_shape::{expand_syntax, PipelineShape},
-    hir::{expand_external_tokens::expand_external_tokens, tokens_iterator::TokensIterator},
+    hir::syntax_shape::{expand_syntax, ExpandContext, PipelineShape},
+    hir::{expand_external_tokens::ExternalTokensShape, tokens_iterator::TokensIterator},
     TokenNode,
 };
 use crate::prelude::*;
@@ -649,10 +649,10 @@ fn classify_pipeline(
 // strings.
 pub(crate) fn external_command(
     tokens: &mut TokensIterator,
-    source: &Text,
+    context: &ExpandContext,
     name: Tagged<&str>,
 ) -> Result<ClassifiedCommand, ShellError> {
-    let arg_list_strings = expand_external_tokens(tokens, source)?;
+    let arg_list_strings = expand_syntax(&ExternalTokensShape, tokens, context)?;
 
     Ok(ClassifiedCommand::External(ExternalCommand {
         name: name.to_string(),
